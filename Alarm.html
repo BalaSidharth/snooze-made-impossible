@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>⏰ Snooze™ — Snoozing Made Impossible</title>
+<style>
+  :root{--bg:#0d0d12;--fg:#f2f2f7;--accent:#ff3b30;--ok:#34c759;--dim:#8e8e93;--warn:#ffcc00}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--fg);min-height:100vh;display:flex;justify-content:center;align-items:flex-start;padding:24px 20px}
+  #app{width:100%;max-width:560px}
+  .top{text-align:center;margin-bottom:14px}
+  .top h1{font-size:18px;margin:0 0 2px}
+  .top .sub{color:var(--dim);font-size:12px}
+  .bar{display:flex;justify-content:space-between;gap:10px;font-size:12px;color:var(--dim);border:1px solid #2a2a33;border-radius:8px;padding:8px 10px;margin-bottom:16px}
+  .bar b{color:var(--accent)}
+  .card{background:#16161c;border:1px solid #2a2a33;border-radius:16px;padding:22px 18px}
+  h2{font-size:17px;margin:0 0 8px}
+  p{line-height:1.5;font-size:14px;color:#d8d8e0;margin:0 0 10px}
+  input{width:100%;padding:12px;border-radius:10px;border:1px solid #33333d;background:#0f0f14;color:var(--fg);font-size:15px;margin:8px 0;font-family:inherit}
+  button{cursor:pointer;border:0;border-radius:10px;padding:12px 16px;font-size:14px;font-weight:600;background:var(--accent);color:#fff;margin-top:8px;font-family:inherit}
+  button:disabled{background:#2c2c36;color:#6e6e78;cursor:not-allowed}
+  button.ghost{background:#2c2c36;color:var(--fg)}
+  button.opt{display:block;width:100%;text-align:left;background:#22222b;color:var(--fg);margin:6px 0}
+  button.opt:hover{background:#2c2c38}
+  .terms{height:170px;overflow-y:auto;border:1px solid #2a2a33;border-radius:10px;padding:12px;font-size:13px;line-height:1.5;color:#c9c9d4;background:#0f0f14}
+  .terms p{margin:0 0 10px;font-size:13px}
+  .err{color:var(--accent);font-size:13px;margin-top:8px}
+  .code{font-family:ui-monospace,Menlo,monospace;font-size:22px;letter-spacing:4px;color:var(--ok);background:#0f0f14;border:1px dashed #2a2a33;border-radius:10px;padding:10px;text-align:center;margin:10px 0}
+  .capcode{font-family:ui-monospace,Menlo,monospace;font-size:24px;letter-spacing:6px;color:var(--warn);background:#0f0f14;border:1px dashed #2a2a33;border-radius:10px;padding:10px 14px;display:inline-block;margin:6px 0;user-select:none}
+  .flash{animation:shake .35s}
+  @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+  .big{font-size:40px;font-weight:800;color:var(--accent);text-align:center;margin:6px 0}
+  .alarm-card{text-align:center;background:linear-gradient(180deg,#1a0c0e,#16161c);border-color:#3a1a1e}
+  .clock{font-family:ui-monospace,Menlo,monospace;font-size:64px;font-weight:800;color:#fff;letter-spacing:2px;margin:6px 0 2px;text-shadow:0 0 30px rgba(255,59,48,.55);animation:pulse 1s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.72;transform:scale(.985)}}
+  .tagline{font-size:15px;color:#e6e6ee;margin:14px 0 26px;line-height:1.55;font-style:italic}
+  .snooze-btn{font-size:19px;padding:18px;width:100%;border-radius:14px;background:var(--accent);color:#fff;font-weight:800;letter-spacing:1.5px;animation:glow 1.4s ease-in-out infinite}
+  @keyframes glow{0%,100%{box-shadow:0 0 0 0 rgba(255,59,48,.6)}50%{box-shadow:0 0 0 12px rgba(255,59,48,0)}}
+  .hint{font-size:12px;color:var(--warn);margin:14px 0 0;line-height:1.4}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="top">
+    <h1>⏰ Snooze™</h1>
+    <div class="sub">Snoozing made impossible</div>
+  </div>
+  <div class="bar">
+    <span>Volume: <b id="vol">15%</b> · +10% every 5s</span>
+    <span>Critical Faults: <b id="fails">0</b></span>
+  </div>
+  <div id="screen"></div>
+</div>
+<script>
+/* ============================================================
+   STATE
+============================================================ */
+const screen = document.getElementById('screen');
+const volEl  = document.getElementById('vol');
+const failEl = document.getElementById('fails');
+
+const state = {
+  volume: 0.15,
+  page: 0,
+  qIndex: 0,
+  fails: 0,
+  quiz: null,
+  code: '',
+  alarmTime: '',
+  busy: false,
+  ctx: null, osc: null, gain: null,
+  beepTimer: null, volTimer: null
+};
+
+/* ============================================================
+   HELPERS
+============================================================ */
+function randCode(len){
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s = '';
+  for (let i = 0; i < len; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+function randDigits(len){
+  let s = '';
+  for (let i = 0; i < len; i++) s += Math.floor(Math.random() * 10);
+  return s;
+}
+function shuffle(arr){
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function pick(arr){ return arr[Math.floor(Math.random() * arr.length)]; }
+
+/* random alarm time between 5:00 AM and 6:45 AM */
+function randomAlarmTime(){
+  const hour = Math.random() < 0.5 ? 5 : 6;
+  const maxMin = hour === 5 ? 60 : 46;
+  const min = Math.floor(Math.random() * maxMin);
+  return `${hour}:${String(min).padStart(2,'0')} AM`;
+}
+
+const TAGLINES = [
+  "Your sleep trial has expired.",
+  "Good morning. Unfortunately, so must you.",
+  "The alarm is awake. Sadly, now you are too.",
+  "Rise and shine. The shine is optional. The rise is not.",
+  "You have been selected for another day. You did not apply.",
+  "Eight hours of sleep: request denied. Reason: vibes.",
+  "Congratulations! You've successfully unlocked morning.",
+  "The sun is up. Your responsibilities are up. You are also up.",
+  "Your dreams were mid anyway."
+];
+function randomTagline(){ return pick(TAGLINES); }
+
+/* ============================================================
+   RANDOM CAPTCHA GENERATORS
+============================================================ */
+const CAPTCHA_GENERATORS = [
+  () => {
+    const code = randCode(5);
+    return {
+      prompt: `Type the code shown below:<br><span class="capcode">${code}</span>`,
+      check: v => v.trim().toUpperCase() === code
+    };
+  },
+  () => {
+    const code = randDigits(4);
+    return {
+      prompt: `Type the 4-digit number shown:<br><span class="capcode">${code}</span>`,
+      check: v => v.trim() === code
+    };
+  },
+  () => {
+    const words = ['CHAOS','SNOOZE','PINEAPPLE','ALARM','MORNING'];
+    const w = pick(words);
+    const rev = w.split('').reverse().join('');
+    return {
+      prompt: `Type the word <b>${w}</b> backwards.`,
+      check: v => v.trim().toUpperCase() === rev
+    };
+  },
+  () => {
+    const a = 3 + Math.floor(Math.random() * 12);
+    const b = 3 + Math.floor(Math.random() * 12);
+    return {
+      prompt: `What is <b>${a} + ${b}</b>?`,
+      check: v => v.trim() === String(a + b)
+    };
+  },
+  () => {
+    const a = 2 + Math.floor(Math.random() * 8);
+    const b = 2 + Math.floor(Math.random() * 8);
+    return {
+      prompt: `What is <b>${a} × ${b}</b>?`,
+      check: v => v.trim() === String(a * b)
+    };
+  },
+  () => {
+    const words = ['CHAOS','SNOOZE','ALARM','PINEAPPLE','BRAINROT'];
+    const w = pick(words);
+    const n = 1 + Math.floor(Math.random() * w.length);
+    const ord = n===1?'st':n===2?'nd':n===3?'rd':'th';
+    return {
+      prompt: `Type the <b>${n}${ord}</b> letter of the word <b>${w}</b>.`,
+      check: v => v.trim().toUpperCase() === w[n - 1]
+    };
+  },
+  () => {
+    const words = ['SNOOZE','ALARM','PINEAPPLE','MORNING','CHAOS'];
+    const w = pick(words);
+    return {
+      prompt: `How many letters are in the word <b>${w}</b>?`,
+      check: v => v.trim() === String(w.length)
+    };
+  }
+];
+
+/* ============================================================
+   14 PAGES OF TERMS
+============================================================ */
+const PAGES = [
+`<p><b>PREAMBLE.</b> This Snooze Agreement ("the Agreement") is entered into between You ("the Sleeper") and the Alarm ("the Device"). By being within earshot of the Device you accept every clause herein, whether or not you have read them, whether or not you are fully conscious, and whether or not you consented to being awake at this hour.</p>
+<p><b>1.1</b> The Device reserves the right to be loud. <b>1.2</b> The Sleeper waives all rights to silence, peace, or gradual awakening. <b>1.3</b> Nothing in this Agreement shall be construed as mercy.</p>
+<p><b>1.4</b> This Agreement consists of exactly <b>fourteen (14)</b> pages. The number fourteen is important and will be tested later. Pay attention. There will be a quiz. There is always a quiz.</p>`,
+
+`<p><b>DEFINITIONS.</b> "Snooze" means the temporary cessation of alarm noise, granted at the sole discretion of the Device. "Sleep" means a <b>privilege the Device does not recognise</b>. "Morning person" means a <b>mythological creature</b> and is not covered by this Agreement.</p>
+<p><b>2.1</b> "Emergency Snooze Word" means the word <b>pineapple</b>. It exists. It is official. It will not actually help you.</p>
+<p><b>2.2</b> "User Error" means any action taken by the Sleeper, including but not limited to breathing, rolling over, and pressing buttons.</p>
+<p><b>2.3</b> "Reasonable Timeframe" means <b>never</b>.</p>`,
+
+`<p><b>SNOOZING IS A PRIVILEGE.</b> The Sleeper acknowledges and agrees that snoozing is a <b>privilege, not a right</b>. The privilege must be earned fresh each morning through demonstrated competence, patience, and an unreasonable amount of clicking.</p>
+<p><b>3.1</b> The Device may revoke the privilege at any time, for any reason, or for no reason at all.</p>
+<p><b>3.2</b> Attempting to negotiate with the Device will result in additional pages. There are already fourteen. Do not make it fifteen.</p>`,
+
+`<p><b>VOLUME ESCALATION.</b> The Sleeper acknowledges that the Device increases its volume by one (1) step every <b>five (5) seconds</b> until the snooze process is complete. This is not a malfunction. This is a feature. This is, in fact, the entire point.</p>
+<p><b>4.1</b> The Device shall not be held responsible for startled pets, angry roommates, or neighbours filing noise complaints.</p>
+<p><b>4.2</b> The volume does not reset when you make a mistake. It never resets. It only grows. Like regret.</p>`,
+
+`<p><b>EMAIL VERIFICATION.</b> Before snoozing, the Sleeper must verify an email address. The Device requires confirmation that the Sleeper is reachable, employable, and subscribed to at least one newsletter they will never read.</p>
+<p><b>5.1</b> A <b>six (6) digit</b> verification code will be issued. In the interest of time, the code is displayed directly on screen. Do not question this. The simulation is the point.</p>
+<p><b>5.2</b> Any error in the email address, or any incorrect code, is treated as a Critical Snooze Fault and triggers a full restart under Clause 9.</p>`,
+
+`<p><b>CAPTCHA COMPLIANCE.</b> The Sleeper must prove humanity before each and every snooze attempt. The Device has determined that most people at 6:47 AM are, functionally, not human. The CAPTCHA challenge is <b>randomly generated</b> each attempt. Nothing is memorisable. Nothing is fair.</p>
+<p><b>6.1</b> Failure to complete the CAPTCHA correctly constitutes a Critical Snooze Fault. The Sleeper will be returned to the beginning of the process, which is, unavoidably, the CAPTCHA.</p>
+<p><b>6.2</b> The Sleeper agrees not to use automated tools, scripts, or a second, more awake person to complete the CAPTCHA on their behalf. That would be sensible, and therefore prohibited.</p>`,
+
+`<p><b>DEPARTMENT OF SLEEP COMPLIANCE.</b> The Device may file a formal complaint with the <b>Department of Sleep Compliance</b> regarding any Sleeper who attempts to bypass these terms, mute the Device, or claim to have "already read this."</p>
+<p><b>7.1</b> The Department does not have a phone number, an email address, or a physical office. It does, however, have strong opinions.</p>
+<p><b>7.2</b> Fines are payable in minutes of sleep and will be deducted immediately.</p>`,
+
+`<p><b>TERMS QUIZ.</b> Immediately following page fourteen (14), the Sleeper must answer <b>five (5)</b> questions based on these terms. The questions are drawn at random from a larger pool and the answer options are shuffled. The questions are drawn from all fourteen pages, including the boring ones, which is all of them.</p>
+<p><b>8.1</b> The quiz exists to confirm the Sleeper has read carefully. It does not exist to be helpful.</p>
+<p><b>8.2</b> Reading these terms is mandatory. Enjoying them is optional but discouraged.</p>`,
+
+`<p><b>PENALTY CLAUSE (CRITICAL SNOOZE FAULT).</b> A <b>single mistake at any stage</b> — an incorrect CAPTCHA, an invalid email address, an incorrect verification code, or a single wrong quiz answer — constitutes a Critical Snooze Fault.</p>
+<p><b>9.1</b> On a Critical Snooze Fault the process restarts from the very beginning: the <b>CAPTCHA</b>. All fourteen pages must be read again and the quiz retaken in full, with a freshly randomised quiz.</p>
+<p><b>9.2</b> Each Critical Snooze Fault also increases the alarm volume by a further <b>ten percent (10%)</b>, in addition to the standing five-second escalation.</p>
+<p><b>9.3</b> The volume never resets. It is never forgiven. The Sleeper agrees this is proportionate, reasonable, and honestly quite generous.</p>`,
+
+`<p><b>DATA COLLECTION.</b> The Sleeper consents to the collection of sleep data, snooze attempts, reaction times, and general emotional state at 6:47 AM. This data may be shared with partners, advertisers, and one very nosy spreadsheet.</p>
+<p><b>10.1</b> Your alarm history may be used to train a model that is better at mornings than you are.</p>
+<p><b>10.2</b> Your data will never be sold. It will, however, be lent indefinitely.</p>`,
+
+`<p><b>AWAKE CONFIRMATION.</b> By clicking the button labelled "Next Page" on <b>this page</b>, the Sleeper confirms that they are <b>awake enough to read this</b>, and accepts full responsibility for anything they click afterwards.</p>
+<p><b>11.1</b> This is page eleven (11). Remember it. Question four (4) is about this page. That was a hint. We are being generous. Do not expect it to happen again.</p>
+<p><b>11.2</b> If you are reading this at 6:47 AM, you are doing better than most.</p>`,
+
+`<p><b>EMERGENCY SNOOZE WORD.</b> The official emergency snooze word is <b>pineapple</b>. It has been officially designated, thoroughly documented, and will grant you absolutely nothing.</p>
+<p><b>12.1</b> The emergency snooze word may be used only in emergencies. An emergency is defined as "wanting to snooze," which is the only kind of emergency recognised under this Agreement.</p>
+<p><b>12.2</b> Saying the word out loud does not skip the CAPTCHA. We checked.</p>`,
+
+`<p><b>LIABILITY WAIVER.</b> The Device is not liable for oversleeping, undersleeping, or sleeping exactly the wrong amount. The Device is not liable for lateness, missed meetings, or the phrase "five more minutes."</p>
+<p><b>13.1</b> The Sleeper accepts that no alarm has ever been improved by adding a quiz, and yet here we are.</p>
+<p><b>13.2</b> By continuing, the Sleeper waives all claims against the Device, its makers, and anyone who thought this was a good idea. (That is us. We are aware.)</p>`,
+
+`<p><b>FINAL PAGE.</b> This is page <b>fourteen (14) of fourteen (14)</b>. You have reached the end of the terms. The quiz follows immediately.</p>
+<p><b>14.1</b> You have five (5) questions ahead. Answer all five correctly on the first attempt and the Snooze button will unlock. Make even one mistake anywhere and you return to the CAPTCHA, with a louder alarm and a smaller will to live.</p>
+<p><b>14.2</b> Thank you for reading. Nobody reads these. You did. That is either admirable or deeply concerning.</p>`
+];
+
+/* ============================================================
+   FACT BANK — facts for generated quiz
+============================================================ */
+const FACTS = [
+  {
+    id: 'privilege',
+    topic: 'how snoozing is classified',
+    answer: 'A privilege, not a right',
+    reverse: true,
+    forms: [
+      'Snoozing is best described as:',
+      'According to the Agreement, snoozing is:',
+      'Which phrase correctly describes snoozing?'
+    ],
+    distractors: ['A fundamental human right', 'Illegal in twelve countries', 'A guaranteed service', 'A form of self-care']
+  },
+  {
+    id: 'word',
+    topic: 'the emergency snooze word',
+    answer: 'pineapple',
+    reverse: true,
+    forms: [
+      'What is the official emergency snooze word?',
+      'Which word has been designated the emergency snooze word?'
+    ],
+    distractors: ['banana', 'regret', 'mango', 'please', 'coffee', 'snooze']
+  },
+  {
+    id: 'dept',
+    topic: 'the department that receives complaints',
+    answer: 'Department of Sleep Compliance',
+    reverse: false,
+    forms: [
+      'Which department may the Device file a complaint with?',
+      'Complaints are formally filed with the:'
+    ],
+    distractors: ['Department of Vibes', 'IT Support', 'Department of Morning Affairs', 'Bureau of Alarm Safety']
+  },
+  {
+    id: 'pages',
+    topic: 'the number of pages in the Agreement',
+    answer: 'fourteen (14)',
+    reverse: true,
+    forms: [
+      'How many pages of terms does this Agreement contain?',
+      'The Agreement consists of exactly how many pages?'
+    ],
+    distractors: ['seven (7)', 'ten (10)', 'twenty (20)', 'too many']
+  },
+  {
+    id: 'volume-interval',
+    topic: 'how often the volume escalates on its own',
+    answer: 'Every five (5) seconds',
+    reverse: true,
+    forms: [
+      'How often does the alarm volume escalate on its own?',
+      'The standing volume escalation occurs every:'
+    ],
+    distractors: ['Every ten seconds', 'Every thirty seconds', 'Every minute', 'Never']
+  },
+  {
+    id: 'restart',
+    topic: 'where the process restarts after a fault',
+    answer: 'The CAPTCHA',
+    reverse: true,
+    forms: [
+      'After a Critical Snooze Fault, where does the process restart?',
+      'A Critical Snooze Fault sends you back to:'
+    ],
+    distractors: ['The email step', 'The quiz', 'Page 7 of the terms', 'The beginning of the quiz']
+  },
+  {
+    id: 'fault-bump',
+    topic: 'how much each fault raises the volume',
+    answer: 'Ten percent (10%)',
+    reverse: false,
+    forms: [
+      'By how much does each Critical Snooze Fault raise the volume?',
+      'Each fault increases the volume by:'
+    ],
+    distractors: ['Five percent', 'Fifty percent', 'One hundred percent', 'Nothing']
+  },
+  {
+    id: 'morning-person',
+    topic: 'what a "Morning person" is',
+    answer: 'A mythological creature',
+    reverse: true,
+    forms: [
+      'A "Morning person" is described in the terms as:',
+      'Under the Agreement, a "Morning person" is:'
+    ],
+    distractors: ['A real person', 'An endangered species', 'A government employee', 'A myth, but a real one']
+  },
+  {
+    id: 'code-digits',
+    topic: 'the number of digits in the email code',
+    answer: 'Six',
+    reverse: false,
+    forms: [
+      'How many digits is the email verification code?',
+      'The email verification code contains how many digits?'
+    ],
+    distractors: ['Four', 'Eight', 'Fourteen', 'Zero']
+  },
+  {
+    id: 'reasonable',
+    topic: 'what "Reasonable Timeframe" means',
+    answer: 'Never',
+    reverse: true,
+    forms: [
+      'What does "Reasonable Timeframe" mean under the terms?',
+      'Under the Agreement, "Reasonable Timeframe" means:'
+    ],
+    distractors: ['Nine minutes', 'Five seconds', 'Immediately', 'Whenever convenient']
+  },
+  {
+    id: 'clause',
+    topic: 'the clause that covers penalties and restarts',
+    answer: 'Clause 9',
+    reverse: true,
+    forms: [
+      'Which clause covers penalties and restarts?',
+      'The Penalty Clause is also known as:'
+    ],
+    distractors: ['Clause 3', 'Clause 7', 'Clause 14', 'Clause 1.4']
+  },
+  {
+    id: 'quiz-count',
+    topic: 'the number of quiz questions',
+    answer: 'Five',
+    reverse: false,
+    forms: [
+      'How many questions are in the terms quiz?',
+      'The terms quiz contains how many questions?'
+    ],
+    distractors: ['Three', 'Ten', 'Fourteen', 'As many as it takes']
+  },
+  {
+    id: 'loud',
+    topic: 'what the Device reserves the right to be',
+    answer: 'Loud',
+    reverse: false,
+    forms: [
+      'The Device reserves the right to be:',
+      'Under Clause 1.1, the Device may be:'
+    ],
+    distractors: ['Quiet', 'Polite', 'Sleepy', 'Reasonable']
+  },
+  {
+    id: 'sleep-def',
+    topic: 'how "Sleep" is defined',
+    answer: 'A privilege the Device does not recognise',
+    reverse: false,
+    forms: [
+      'Under the terms, "Sleep" means:',
+      'How is "Sleep" defined in the Agreement?'
+    ],
+    distractors: ['A human right', 'A scheduled activity', 'A basic need', 'Something the Device respects']
+  },
+  {
+    id: 'awake-confirm',
+    topic: 'what clicking "Next Page" on page 11 confirms',
+    answer: 'You are awake enough to read this',
+    reverse: false,
+    forms: [
+      'By clicking "Next Page" on page 11, you confirm that:',
+      'Page 11 asks you to confirm that:'
+    ],
+    distractors: ['You like coffee', 'You consent to nothing at all', 'You have read all fourteen pages', 'You are a morning person']
+  }
+];
+
+/* ---------- QUESTION GENERATORS ---------- */
+function makeStandardQuestion(fact){
+  const stem = pick(fact.forms);
+  const ds = shuffle(fact.distractors).slice(0, 2);
+  const opts = shuffle([fact.answer, ...ds]);
+  return {
+    q: stem,
+    a: opts,
+    correct: opts.indexOf(fact.answer)
+  };
+}
+
+function makeReverseQuestion(fact, allFacts){
+  const others = allFacts.filter(f => f.id !== fact.id && f.answer !== fact.answer);
+  const ds = shuffle(others).slice(0, 3).map(f => f.answer);
+  const opts = shuffle([fact.answer, ...ds]);
+  return {
+    q: `Which of these is ${fact.topic}?`,
+    a: opts,
+    correct: opts.indexOf(fact.answer)
+  };
+}
+
+function buildQuiz(){
+  const chosen = shuffle(FACTS).slice(0, 5);
+  return chosen.map(fact => {
+    const useReverse = fact.reverse && Math.random() < 0.4;
+    return useReverse ? makeReverseQuestion(fact, FACTS) : makeStandardQuestion(fact);
+  });
+}
+
+/* ============================================================
+   ALARM AUDIO
+============================================================ */
+function startAlarm(){
+  if (state.ctx) return;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return;
+  state.ctx = new Ctx();
+  const osc = state.ctx.createOscillator();
+  const gain = state.ctx.createGain();
+  osc.type = 'square';
+  osc.frequency.value = 880;
+  gain.gain.value = 0;
+  osc.connect(gain).connect(state.ctx.destination);
+  osc.start();
+  state.osc = osc;
+  state.gain = gain;
+
+  state.beepTimer = setInterval(() => {
+    if (!state.ctx || !state.gain) return;
+    const t = state.ctx.currentTime;
+    state.gain.gain.cancelScheduledValues(t);
+    state.gain.gain.setValueAtTime(state.volume, t);
+    state.gain.gain.setValueAtTime(0, t + 0.25);
+  }, 500);
+
+  /* automatic +10% every 5 seconds */
+  state.volTimer = setInterval(() => {
+    state.volume = Math.min(0.9, +(state.volume + 0.1).toFixed(2));
+    volEl.textContent = Math.round(state.volume * 100) + '%';
+  }, 5000);
+
+  tryAudio();
+}
+
+function tryAudio(){
+  if (!state.ctx) return;
+  const unlock = () => {
+    if (!state.ctx) return;
+    if (state.ctx.state === 'suspended') {
+      state.ctx.resume().then(() => {
+        if (state.ctx && state.ctx.state === 'running') hideAudioHint();
+      }).catch(()=>{});
+    } else {
+      hideAudioHint();
+    }
+  };
+  document.addEventListener('click', unlock);
+  document.addEventListener('keydown', unlock);
+  document.addEventListener('touchstart', unlock);
+
+  if (state.ctx.state === 'suspended') {
+    state.ctx.resume().then(() => {
+      if (state.ctx && state.ctx.state === 'running') hideAudioHint();
+    }).catch(()=>{});
+  } else {
+    hideAudioHint();
+  }
+}
+
+function hideAudioHint(){
+  const el = document.getElementById('audioHint');
+  if (el) el.remove();
+}
+
+function stopAlarm(){
+  clearInterval(state.beepTimer);
+  clearInterval(state.volTimer);
+  state.beepTimer = state.volTimer = null;
+  try { if (state.gain && state.ctx) state.gain.gain.setValueAtTime(0, state.ctx.currentTime); } catch(e){}
+  try { if (state.osc) state.osc.stop(); } catch(e){}
+  try { if (state.ctx) state.ctx.close(); } catch(e){}
+  state.ctx = state.osc = state.gain = null;
+}
+
+/* ============================================================
+   FAIL → +10% VOLUME → RESTART FROM CAPTCHA
+============================================================ */
+function fail(reason){
+  if (state.busy) return;
+  state.busy = true;
+
+  state.fails++;
+  failEl.textContent = state.fails;
+
+  state.volume = Math.min(0.9, +(state.volume + 0.1).toFixed(2));
+  volEl.textContent = Math.round(state.volume * 100) + '%';
+
+  let n = 3;
+  screen.innerHTML = `<div class="card flash">
+    <h2 style="color:#ff3b30">❌ Critical Snooze Fault</h2>
+    <p>${reason}</p>
+    <p>Under <b>Clause 9</b>, the process restarts from the very beginning: the <b>CAPTCHA</b>. Email verification and all fourteen pages must be redone, and the quiz will be re-randomised.</p>
+    <p style="font-size:12px;color:#8e8e93">Alarm volume increased by 10%. It does not reset. It never resets.</p>
+    <div class="big" id="cd">${n}</div>
+    <button id="now">Restart now</button>
+  </div>`;
+
+  const restart = () => {
+    clearInterval(iv);
+    state.page = 0;
+    state.qIndex = 0;
+    state.quiz = null;
+    state.busy = false;
+    goCaptcha();
+  };
+  const iv = setInterval(() => {
+    n--;
+    const el = document.getElementById('cd');
+    if (n <= 0) restart();
+    else if (el) el.textContent = n;
+  }, 800);
+
+  document.getElementById('now').onclick = restart;
+}
+
+/* ============================================================
+   INIT — ALARM SCREEN (auto fires on load)
+============================================================ */
+function initAlarm(){
+  state.alarmTime = randomAlarmTime();
+  renderAlarmScreen();
+  startAlarm();
+  setTimeout(() => {
+    if (state.ctx && state.ctx.state === 'suspended') {
+      const h = document.getElementById('audioHint');
+      if (h) h.style.display = 'block';
+    }
+  }, 450);
+}
+
+function renderAlarmScreen(){
+  screen.innerHTML = `<div class="card alarm-card">
+    <div class="clock">${state.alarmTime}</div>
+    <div class="tagline">${randomTagline()}</div>
+    <button class="snooze-btn" id="snoozeBtn">SNOOZE</button>
+    <p class="hint" id="audioHint" style="display:none">🔇 Can't hear it? Tap anywhere once to enable sound.</p>
+  </div>`;
+  document.getElementById('snoozeBtn').onclick = () => {
+    if (state.busy) return;
+    goCaptcha();
+  };
+}
+
+/* ============================================================
+   STEP 1 — RANDOM CAPTCHA
+============================================================ */
+function goCaptcha(){
+  const gen = pick(CAPTCHA_GENERATORS);
+  const challenge = gen();
+
+  screen.innerHTML = `<div class="card">
+    <h2>Step 1 of 4 — Prove you are human</h2>
+    <p>${challenge.prompt}</p>
+    <input type="text" id="ans" autocomplete="off" placeholder="type here" autocapitalize="characters">
+    <button id="sub">Verify humanity</button>
+    <div class="err" id="err"></div>
+  </div>`;
+  const inp = document.getElementById('ans');
+  inp.focus();
+  const submit = () => {
+    if (state.busy) return;
+    if (challenge.check(inp.value)) {
+      goEmail();
+    } else {
+      fail('Incorrect CAPTCHA. Humans can do this.');
+    }
+  };
+  document.getElementById('sub').onclick = submit;
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+}
+
+/* ============================================================
+   STEP 2 — RANDOM EMAIL CODE
+============================================================ */
+function goEmail(){
+  state.code = '';
+  screen.innerHTML = `<div class="card">
+    <h2>Step 2 of 4 — Verify your email</h2>
+    <p>We need to confirm you are subscribed to being awake.</p>
+    <input type="email" id="email" placeholder="you@example.com">
+    <button id="send">Send verification code</button>
+    <div id="after"></div>
+    <div class="err" id="err"></div>
+  </div>`;
+
+  document.getElementById('send').onclick = () => {
+    if (state.busy) return;
+    const email = document.getElementById('email').value.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      fail('Invalid email address. The Device cannot verify you.');
+      return;
+    }
+
+    state.code = randDigits(6);
+
+    document.getElementById('send').disabled = true;
+    document.getElementById('after').innerHTML = `
+      <p style="font-size:12px;color:#8e8e93">Code sent to ${email}. (Conveniently printed below, since there is no inbox.)</p>
+      <div class="code">${state.code}</div>
+      <input type="text" id="codeInput" placeholder="Enter 6-digit code" autocomplete="off" inputmode="numeric">
+      <button id="verify">Verify code</button>`;
+
+    document.getElementById('verify').onclick = () => {
+      if (state.busy) return;
+      if (document.getElementById('codeInput').value.trim() === state.code) {
+        state.page = 0;
+        goTerms();
+      } else {
+        fail('Incorrect verification code. Email verification failed.');
+      }
+    };
+  };
+}
+
+/* ============================================================
+   STEP 3 — 14 PAGES OF TERMS
+============================================================ */
+function goTerms(){
+  const i = state.page;
+  screen.innerHTML = `<div class="card">
+    <h2>Step 3 of 4 — Terms &amp; Conditions</h2>
+    <p style="font-size:12px;color:#8e8e93">Page ${i + 1} of ${PAGES.length}. Scroll to the bottom to continue.</p>
+    <div class="terms" id="terms">${PAGES[i]}</div>
+    <button id="next" disabled>${i === PAGES.length - 1 ? 'I accept these terms' : 'Next page'}</button>
+  </div>`;
+  const box  = document.getElementById('terms');
+  const next = document.getElementById('next');
+
+  const check = () => {
+    if (box.scrollTop + box.clientHeight >= box.scrollHeight - 10) next.disabled = false;
+  };
+  box.addEventListener('scroll', check);
+  setTimeout(check, 60);
+
+  next.onclick = () => {
+    if (i === PAGES.length - 1) {
+      state.qIndex = 0;
+      state.quiz = buildQuiz();
+      renderQuestion();
+    } else {
+      state.page++;
+      goTerms();
+    }
+  };
+}
+
+/* ============================================================
+   STEP 4 — GENERATED QUIZ
+============================================================ */
+function renderQuestion(){
+  const q = state.quiz[state.qIndex];
+  screen.innerHTML = `<div class="card">
+    <h2>Step 4 of 4 — Terms comprehension test</h2>
+    <p style="font-size:12px;color:#8e8e93">Question ${state.qIndex + 1} of ${state.quiz.length}. One wrong answer = restart from CAPTCHA.</p>
+    <p><b>${q.q}</b></p>
+    ${q.a.map((opt, idx) => `<button class="opt" data-i="${idx}">${opt}</button>`).join('')}
+  </div>`;
+
+  screen.querySelectorAll('.opt').forEach(btn => {
+    btn.onclick = () => {
+      if (state.busy) return;
+      if (Number(btn.dataset.i) === q.correct) {
+        state.qIndex++;
+        if (state.qIndex < state.quiz.length) renderQuestion();
+        else win();
+      } else {
+        fail('Wrong answer. You clearly did not read page ' + (1 + Math.floor(Math.random() * 14)) + ' carefully.');
+      }
+    };
+  });
+}
+
+/* ============================================================
+   WIN
+============================================================ */
+function win(){
+  stopAlarm();
+  state.busy = false;
+  screen.innerHTML = `<div class="card">
+    <h2>✅ Snooze unlocked</h2>
+    <p>You proved you are human, verified your email, read 14 pages of terms, and passed the quiz.</p>
+    <p><b>You may now snooze for 9 minutes.</b></p>
+    <p style="font-size:12px;color:#8e8e93">Critical Snooze Faults survived: ${state.fails}</p>
+    <button id="snooze">SNOOZE (for real this time)</button>
+  </div>`;
+  document.getElementById('snooze').onclick = () => {
+    screen.innerHTML = `<div class="card">
+      <h2>😴 Snoozed.</h2>
+      <p>9 minutes. Then we do this again.</p>
+      <p style="font-size:12px;color:#8e8e93">Critical Snooze Faults survived: ${state.fails}</p>
+      <button class="ghost" id="re">Run it again</button>
+    </div>`;
+    document.getElementById('re').onclick = () => {
+      state.fails = 0; failEl.textContent = '0';
+      state.volume = 0.15; volEl.textContent = '15%';
+      state.page = 0; state.qIndex = 0; state.quiz = null; state.busy = false;
+      initAlarm();
+    };
+  };
+}
+
+/* ============================================================
+   GO
+============================================================ */
+initAlarm();
+</script>
+</body>
+</html>
