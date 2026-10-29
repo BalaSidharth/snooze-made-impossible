@@ -73,7 +73,7 @@ Because the quiz is assembled from random pieces (fact selection × question ste
 
 No build step. No dependencies. No installation. No internet required.
 
-### Option 1 — Just open it
+## Just open it
 
 1. Download or clone this repository
 2. Double-click Alarm.html
