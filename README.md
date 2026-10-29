@@ -103,6 +103,12 @@ No build step. No dependencies. No installation. No internet required.
 
 ---
 
+## 🔗 Live demo
+
+**[Try it here](https://balasidharth.github.io/snooze-made-impossible/Alarm.html)** — turn your volume down first.
+
+---
+
 ## 📄 License
 
 Built for a hackathon. Do whatever you want with it. It has no practical value, which is the entire point.
