@@ -2,12 +2,35 @@
 
 > **ACM x MTC — What The Hack?! 2.0**
 > **Track 2: The Ultimate Inconvenience**
+> **Team: Employed** 🍍
 
-An alarm clock that takes the single simplest action in the world — pressing **Snooze** — and turns it into a four-stage bureaucratic ordeal. By the time you're allowed to snooze, you're awake. That's the joke, and that's the point.
+---
+
+## 👥 TEAM — EMPLOYED
+
+<h3 align="center">🍍 Employed 🍍</h3>
+<p align="center"><i>Four engineers. Zero desire to wake up. Fully employed by the alarm.</i></p>
+
+<div align="center">
+
+|  #  | 👤 Name | 🎫 BITS ID |
+|:---:|:--------|:----------:|
+| `01` | **BALASIDHARTH K** | `2025A7PS9004U` |
+| `02` | **HITANSH SINGH KHANGAROT** | `2025A7PS9005U` |
+| `03` | **KEERTHAN R KARTHIK** | `2025A7PS9006U` |
+| `04` | **MALLELA SAI SUSMITH** | `2025A7PS9020U` |
+
+</div>
+
+> **Team motto:** *"Snoozing is a privilege, not a right."* — Clause 3 of our own Terms & Conditions.
 
 ---
 
 ## 📖 What it does
+
+An alarm clock that takes the single simplest action in the world — pressing **Snooze** — and turns it into a four-stage bureaucratic ordeal. By the time you're allowed to snooze, you're awake. That's the joke, and that's the point.
+
+**Built by four employed people who would rather not be.**
 
 Snooze™ is a deliberately useless web app built for a hackathon where useful software is explicitly banned.
 
@@ -27,8 +50,6 @@ Only after surviving all four steps does the real **SNOOZE** button appear.
 ---
 
 ## 💥 The penalty system (the actual product)
-
-This is where the inconvenience becomes the feature.
 
 ### Critical Snooze Fault
 
@@ -73,9 +94,23 @@ Because the quiz is assembled from random pieces (fact selection × question ste
 
 No build step. No dependencies. No installation. No internet required.
 
-## Just open it
+### Just open it
 
 1. Download or clone this repository
-2. Double-click Alarm.html
+2. Double-click **Alarm.html**
 3. It opens in your browser and the alarm starts immediately
 4. If your browser blocks audio autoplay, **tap or click anywhere once** to enable sound — a yellow hint appears on screen if this happens
+
+---
+
+## 📄 License
+
+Built for a hackathon. Do whatever you want with it. It has no practical value, which is the entire point.
+
+---
+
+## 🙏 Acknowledgements
+
+- **ACM BPDC** and **Microsoft Tech Club** for hosting a hackathon where this was not only allowed but *encouraged*
+- Every alarm clock that ever made us do this
+- The concept of employment, for making "Team Employed" sound like a joke
